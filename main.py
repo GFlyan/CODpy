@@ -1,35 +1,55 @@
 from pynput.mouse import Listener
 import vgamepad as vg
 import threading
+import pyautogui
+import math
 import time
 
-# Inicializa controle virtual Xbox 360
+# Controle virtual Xbox 360
 gamepad = vg.VX360Gamepad()
 
-# Configurações ajustadas
-scale = 0.03            # Sensibilidade aumentada
-deadzone = 0.01         # Menor zona morta para aceitar microajustes
-smooth_factor = 0.85    # Suavização muito alta
+# Configurações de suavidade
+scale = 0.03
+deadzone = 0.01
+smooth_factor = 0.85
 last_x, last_y = None, None
 smoothed_dx, smoothed_dy = 0.0, 0.0
+
+# Aim assist simulado
+target_x, target_y = pyautogui.size()[0] // 2, pyautogui.size()[1] // 2  # alvo no centro
+aim_radius = 150
+assist_strength = 0.12
+
 
 def move_analog(delta_x, delta_y):
     global smoothed_dx, smoothed_dy
 
-    # Suavização com média exponencial mais intensa
+    # Suavização
     smoothed_dx = (smooth_factor * smoothed_dx) + ((1 - smooth_factor) * delta_x)
     smoothed_dy = (smooth_factor * smoothed_dy) + ((1 - smooth_factor) * delta_y)
 
-    # Aplica escala para controlar resposta
-    x = max(min(smoothed_dx * scale, 1.0), -1.0)
-    y = max(min(-smoothed_dy * scale, 1.0), -1.0)  # eixo Y invertido
+    # Aim assist: atrai para o centro se estiver perto
+    mouse_x, mouse_y = pyautogui.position()
+    distance = math.hypot(target_x - mouse_x, target_y - mouse_y)
 
-    # Zona morta refinada
+    if distance < aim_radius:
+        pull_x = (target_x - mouse_x) * assist_strength
+        pull_y = (target_y - mouse_y) * assist_strength
+        smoothed_dx += pull_x
+        smoothed_dy += pull_y
+
+    # Aplica escala
+    x = max(min(smoothed_dx * scale, 1.0), -1.0)
+    y = max(min(-smoothed_dy * scale, 1.0), -1.0)
+
+    # Zona morta
     if abs(x) < deadzone: x = 0.0
     if abs(y) < deadzone: y = 0.0
 
+    # Atualiza controle
     gamepad.right_joystick_float(x_value_float=x, y_value_float=y)
     gamepad.update()
+
 
 def on_move(x, y):
     global last_x, last_y
@@ -42,17 +62,18 @@ def on_move(x, y):
     delta_y = y - last_y
     last_x, last_y = x, y
 
-    # Ignora movimentos muito extremos
     if abs(delta_x) > 100 or abs(delta_y) > 100:
         return
 
     move_analog(delta_x, delta_y)
 
+
 def start_listener():
     with Listener(on_move=on_move) as listener:
         listener.join()
 
-# Roda em thread separada
+
+# Inicia listener
 threading.Thread(target=start_listener, daemon=True).start()
-print("🎮 Controle suave ativado! Mouse agora com resposta fluida e precisa.")
+print("🎯 Aim Assist + controle suave ativado!")
 input("Pressione Enter para encerrar...\n")
